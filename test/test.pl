@@ -97,6 +97,16 @@ test_vcf_norm($opts,in=>'norm.merge',out=>'norm.merge.out',args=>'-m+');
 test_vcf_norm($opts,in=>'norm.merge.2',out=>'norm.merge.2.out',args=>'-m+');
 test_vcf_norm($opts,in=>'norm.merge.3',out=>'norm.merge.3.out',args=>'-m+');
 test_vcf_norm($opts,in=>'norm.merge',out=>'norm.merge.strict.out',args=>'-m+ -s');
+
+# Tests ignoring reference checking
+test_vcf_norm($opts,in=>'norm',out=>'norm.out',fai=>'norm',args=>'-ci');
+test_vcf_norm($opts,in=>'norm.split',out=>'norm.split.out',args=>'-m- -ci');
+test_vcf_norm($opts,in=>'norm.split',fai=>'norm',out=>'norm.split.and.norm.out',args=>'-m- -ci');
+test_vcf_norm($opts,in=>'norm.merge',out=>'norm.merge.out',args=>'-m+ -ci');
+test_vcf_norm($opts,in=>'norm.merge.2',out=>'norm.merge.2.out',args=>'-m+ -ci');
+test_vcf_norm($opts,in=>'norm.merge.3',out=>'norm.merge.3.out',args=>'-m+ -ci');
+test_vcf_norm($opts,in=>'norm.merge',out=>'norm.merge.strict.out',args=>'-m+ -s -ci');
+
 test_vcf_norm($opts,in=>'norm.setref',out=>'norm.setref.out',args=>'-Nc s',fai=>'norm');
 test_vcf_view($opts,in=>'view',out=>'view.1.out',args=>'-aUc1 -C1 -s NA00002 -v snps',reg=>'');
 test_vcf_view($opts,in=>'view',out=>'view.2.out',args=>'-f PASS -Xks NA00003',reg=>'-r20,Y');

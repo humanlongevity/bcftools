@@ -76,6 +76,7 @@ typedef struct
     char **argv, *output_fname, *ref_fname, *vcf_fname, *region, *targets;
     int argc, rmdup, output_type, check_ref, strict_filter, do_indels;
     int nchanged, nskipped, ntotal, mrows_op, mrows_collapse, parsimonious;
+    int no_sanity;
 }
 args_t;
 
@@ -256,29 +257,34 @@ static int realign(args_t *args, bcf1_t *line)
 {
     bcf_unpack(line, BCF_UN_STR);
 
-    // Sanity check REF
+    
     int i, nref, reflen = strlen(line->d.allele[0]);
-    char *ref = faidx_fetch_seq(args->fai, (char*)args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos, line->pos+reflen-1, &nref);
-    if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos+1);
-    replace_iupac_codes(ref,nref);
-
     // does REF contain non-standard bases?
     if ( replace_iupac_codes(line->d.allele[0],reflen) )
     {
         args->nchanged++;
         bcf_update_alleles(args->hdr,line,(const char**)line->d.allele,line->n_allele);
     }
-    if ( strcasecmp(ref,line->d.allele[0]) )
+    // Sanity check REF
+    if (args->no_sanity == 0)
     {
-        if ( args->check_ref==CHECK_REF_EXIT )
-            error("Reference allele mismatch at %s:%d .. REF_SEQ:'%s' vs VCF:'%s'\n", bcf_seqname(args->hdr,line),line->pos+1,ref,line->d.allele[0]);
-        if ( args->check_ref & CHECK_REF_WARN )
-            fprintf(stderr,"REF_MISMATCH\t%s\t%d\t%s\n", bcf_seqname(args->hdr,line),line->pos+1,line->d.allele[0]);
+        char *ref = faidx_fetch_seq(args->fai, (char*)args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos, line->pos+reflen-1, &nref);
+        if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos+1);
+        replace_iupac_codes(ref,nref);
+
+        if ( strcasecmp(ref,line->d.allele[0]) )
+        {
+            if ( args->check_ref==CHECK_REF_EXIT )
+                error("Reference allele mismatch at %s:%d .. REF_SEQ:'%s' vs VCF:'%s'\n", bcf_seqname(args->hdr,line),line->pos+1,ref,line->d.allele[0]);
+            if ( args->check_ref & CHECK_REF_WARN )
+                fprintf(stderr,"REF_MISMATCH\t%s\t%d\t%s\n", bcf_seqname(args->hdr,line),line->pos+1,line->d.allele[0]);
+            free(ref);
+            return ERR_REF_MISMATCH;
+        }
         free(ref);
-        return ERR_REF_MISMATCH;
     }
-    free(ref);
-    ref = NULL;
+
+    char * ref = NULL;
 
     if ( line->n_allele == 1 ) return ERR_OK;    // a REF
 
@@ -1658,7 +1664,8 @@ static void usage(void)
     fprintf(stderr, "Usage:   bcftools norm [options] <in.vcf.gz>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -c, --check-ref <e|w|x|s>         check REF alleles and exit (e), warn (w), exclude (x), or set (s) bad sites [e]\n");
+    fprintf(stderr, "    -c, --check-ref <e|w|x|s|i>       Don't check REF alleles (i) or check REF alleles and exit (e), warn (w), exclude (x), or set (s) bad sites [e]\n");
+    fprintf(stderr, "                                      NOTE: when (i) is used, (e) and (w) will still determine behaviour if duplicate alleles are detected [e]\n");
     fprintf(stderr, "    -D, --remove-duplicates           remove duplicate lines of the same type.\n");
     fprintf(stderr, "    -d, --rm-dup <type>               remove duplicate snps|indels|both|any\n");
     fprintf(stderr, "    -f, --fasta-ref <file>            reference sequence\n");
@@ -1738,7 +1745,12 @@ int main_vcfnorm(int argc, char *argv[])
                 if ( strchr(optarg,'w') ) args->check_ref |= CHECK_REF_WARN;
                 if ( strchr(optarg,'x') ) args->check_ref |= CHECK_REF_SKIP;
                 if ( strchr(optarg,'s') ) args->check_ref |= CHECK_REF_FIX;
-                if ( strchr(optarg,'e') ) args->check_ref = CHECK_REF_EXIT; // overrides the above
+                if ( strchr(optarg,'e') ) args->check_ref = CHECK_REF_EXIT;
+                if ( strchr(optarg,'i') )
+                    {
+                        fprintf(stderr, "WARNING: REF checking disabled!\n");
+                        args->no_sanity = 1; // overrides the above
+                    }
                 break;
             case 'O':
                 switch (optarg[0]) {
